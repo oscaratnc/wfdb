@@ -1,0 +1,5 @@
+300*
+wfdb-*
+*.pyc
+*.pyproj
+.vscode
