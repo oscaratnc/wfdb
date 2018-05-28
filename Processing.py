@@ -1,4 +1,5 @@
 from scipy import signal as sp
+from scipy import interpolate as ip
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -166,7 +167,7 @@ class ECGProcessing:
 
     def eraseBLD2(self, ECGSignal, fs):
         nyq  =  fs * 0.5
-        f1 =.5
+        f1 =.4
         beta= 4
         b= sp.firwin(20,f1,window=('kaiser', beta),)
         ECGSignal= sp.filtfilt(b,1,ECGSignal)
@@ -212,12 +213,12 @@ class ECGProcessing:
         return squaringSignal
 
     def tempWinIntegration(self, ecgSignal):
-        h = np.ones(25)/25
-        delay = 10
+        h = np.ones(15)/15
+        delay = 5
         IntFilter = sp.convolve(ecgSignal,h)
         IntFilter = IntFilter[delay:len(ecgSignal)+delay]
         gp = generalProcessing()
-        gp.movMean(IntFilter,5)
+        gp.movMean(IntFilter,3)
         IntFilter = IntFilter / np.max(np.abs(IntFilter))
         return IntFilter
 
@@ -231,7 +232,7 @@ class ECGProcessing:
         globalV.cleanECGNormalized = gP.Normalize(globalV.cleanECGAC)
 
         #Baseline Drift correction
-        globalV.cleanECGBLD = self.eraseBLD2(globalV.cleanECGNormalized,sampleFreq)
+        globalV.cleanECGBLD = self.eraseBLD(globalV.cleanECGNormalized,sampleFreq)
 
         #BandPassFilter
         globalV.cleanECGFilteredLP = self.bandpassFilterECG(globalV.cleanECGBLD,sampleFreq)
@@ -267,7 +268,7 @@ class ECGProcessing:
         # plt.show()
 
 
-        print "\n ECG Cleaned"
+        #print "\n ECG Cleaned"
 
     def getMax(self,signal):
         peakVal = np.max(signal)
@@ -310,12 +311,10 @@ class ECGProcessing:
         right = np.transpose(np.nonzero(np.diff(poss_reg) == -1))
 
 
-        left = left[:len(left)]
-        right= right[1:len(right)]
+        # left = left[:len(left)]
+        # right= right[1:len(right)]
 
-        #print "left: ",len(left), "right: ", len (right)
-        # print right
-        # print left
+        # 
         # temp = right
 
         # for i in range (len(left)):
@@ -330,66 +329,98 @@ class ECGProcessing:
         S_value = np.array([])
         S_loc = np.array([])
 
+        if  left[0] < right[0]:
+                left = left[1:]
 
+        if right[0] < left[0]:
+            right  = right[1:]
+
+        # print "left: ",len(left),
+        # print left
+        # print "right: ", len (right)
+        # print right
 
         for iLoc in range(len(left)-1):
 
-            tempECG = []
-            #print "right len:", len(right),"left len: ", len(left), "iLoc: ", iLoc
-            #For normal QRS Complexes
-            #print "Right loc:", right[iLoc], "Left loc: ", left[iLoc], "Diff", right[iLoc]-left[iLoc]
+
+            # print "right:", len(right), right
+            # print "left: ", len(left), left
+            # print  "iLoc: ", iLoc
 
 
-            if right[iLoc]-left[iLoc] > 20:
+            
+            # #For normal QRS Complexes
+            # print "Right loc:", right[iLoc], "Left loc: ", left[iLoc], "Diff", right[iLoc]-left[iLoc]
 
+
+            if right[iLoc]-left[iLoc] > 5:
+                
                 #Stores ECG values in temporal vector
                 tempECGR = ecg[int(left[iLoc]):int(right[iLoc])]
-                
-                #print  "tempECG", tempECG
+                # plt.figure()
+                # plt.subplot(311)
+                # plt.title("TempECGR")
+                # plt.plot(tempECGR)
+               
+                #print  "tempECGR", tempECGR
 
                 #calculate the max peak of the temporal vector
-                peakVal, peakLoc = self.getMax(tempECG)
-                R_loc = np.append(R_loc, (peakLoc) + left[iLoc])
-                R_value = np.append(R_value, peakVal)
+                peakValR, peakLocR = self.getMax(tempECGR)
+               
+                # print peakLocR
+                # print int(left[iLoc])
+
+                tempECGQ = ecg[int(left[iLoc]):int(left[iLoc])+peakLocR]
+                # plt.subplot(312)
+
+                # plt.title("TempECGQ")
+                # plt.plot(tempECGQ)
                 
-                tempECGQ = ecg[int(left[iLoc]):int(R_loc[iLoc])]
-                tempECGS = ecg[int(R_loc[iLoc]):int(right[iLoc])]
-                
-                if peakVal < 0:
+                tempECGS = ecg[int(left[iLoc])+peakLocR:int(right[iLoc])]
+                # print "tempECGS", tempECGS
+                # plt.subplot(313)
+                # plt.title("TempECGS")
+                # plt.plot(tempECGS)
+                # plt.show()
+                if peakValR < 0:
  
                     #calculate the min peak of the temporal vector
-                    peakVal, peakLoc = self.getMin(tempECGR)
-                    R_loc = np.append(R_loc, peakLoc + left[iLoc])
-                    R_value = np.append(R_value, peakVal)
+                    peakValR, peakLocR = self.getMin(tempECGR)
+                    R_loc = np.append(R_loc, peakLocR + left[iLoc])
+                    R_value = np.append(R_value, peakValR)
                     
-                    peakVal, peakLoc = self.getMax(tempECGQ)
-                    Q_loc = np.append(Q_loc, (peakLoc) + left[iLoc])
-                    Q_value = np.append(Q_value, peakVal) 
+                    peakValQ, peakLocQ = self.getMax(tempECGQ)
+                    Q_loc = np.append(Q_loc, (peakLocQ) + left[iLoc])
+                    Q_value = np.append(Q_value, peakValQ) 
 
-                    peakVal, peakLoc = self.getMin(tempECGS)
-                    Q_loc = np.append(Q_loc, (peakLoc) + left[iLoc])
-                    Q_value = np.append(Q_value, peakVal) 
+                    peakValS, peakLocS = self.getMax(tempECGS)
+                    S_loc = np.append(S_loc, (peakLocS) + R_loc[iLoc])
+                    S_value = np.append(S_value, peakValS) 
 
                     k = k + 1
                     continue
+                R_loc = np.append(R_loc, (peakLocR) + left[iLoc])
+                R_value = np.append(R_value, peakValR)
 
-                # plt.figure()
-                # for i in range(len(right)):
-                #     plt.axvline(x=right[i], color = 'g', linestyle= '--')
-                #     plt.axvline(x=left[i], color = 'b', linestyle= '--')
+                peakValQ, peakLocQ = self.getMin(tempECGQ)
 
-                # plt.plot(globalV.cleanECGintegrated,'k')
-                # plt.plot(left[iLoc]+peakLoc,peakVal, 'ro')
-                # plt.show()
+                Q_loc = np.append(Q_loc, (peakLocQ) + left[iLoc])
+                Q_value = np.append(Q_value, peakValQ) 
 
-               
-                #print peakVal, ecg[int(R_loc[iLoc])]
-                #print len(R_loc) , R_loc[k]
+                peakValS, peakLocS = self.getMin(tempECGS)
+                S_loc = np.append(S_loc, peakLocS + R_loc[k])
+                S_value = np.append(S_value, peakValS) 
+
                
                 k = k +1
         #print "R localtions ", R_loc[90:93]
+        
         globalV.r_Loc = R_loc
         globalV.r_peak = R_value
+        globalV.q_Loc = Q_loc
+        globalV.q_peak= Q_value
+        globalV.s_Loc = S_loc
+        globalV.s_peak = S_value
 
     def HRcalculation(self,ECGSignal,fs):
         #cleans ECG and fills global values
@@ -407,12 +438,11 @@ class ECGProcessing:
                 RR = np.append(RR,RR_t)
             #print RR
             meanRR = np.mean(RR)
-            print "MEAN RR: ", meanRR
+            #print "MEAN RR: ", meanRR
             HR = 60/meanRR
             #print "HR: ", HR
             globalV.HR_vector = np.append(globalV.HR_vector,HR)
             #print "HR ADDED"
-
 
 class spo2Processing:
 
@@ -450,13 +480,12 @@ class spo2Processing:
         #print filtered
         return filtered
 
-    def slopeSum(self, signal):
+    def slopeSum(self, signal, sampleFreq):
         print "Filtering in process...."
         globalV.spO2SignalFilter = self.spO2LowPassFilter(signal)
         print globalV.spO2SignalFilter
         print "Slope Sum in process"
         gP = generalProcessing()
-        sampleFreq = 125
         window = (128 * sampleFreq)/1000
         slopeSum = np.array([])
         #signal = gP.getACcomponent(signal)
@@ -532,12 +561,12 @@ class spo2Processing:
 
                 for iRL in range(left[iLoc], right[iLoc]):
                     temporal.append(globalV.spO2SignalFilter[iRL])
-                print temporal
+                #print temporal
                 peakLoc = np.argmax(temporal)
-                print peakLoc, temporal[peakLoc]
+                #print peakLoc, temporal[peakLoc]
                 peaksLoc = np.append(peaksLoc, peakLoc+left[iLoc])
 
-        print peaksLoc
+        #print peaksLoc
         if len(peaksLoc) > 1:
             t = np.arange(0, len(peaksLoc), 1./125)
             RR = np.array([])
@@ -547,7 +576,7 @@ class spo2Processing:
                 RR = np.append(RR,RR_t)
 
             meanRR = np.mean(RR)
-            print "Mean RR: ", meanRR
+            #print "Mean RR: ", meanRR
 
             pulse = 60/meanRR
             print pulse
@@ -564,115 +593,105 @@ class spo2Processing:
         spO2Value =  96.545 + 0.616 * RR
         Spo2Value =int(np.round(spO2Value,0))
 
-
 class EDRcalculation:
 
-    def ecgSLocation(self):
-        for iloc in range(len(globalV.r_Loc)):
-            #.1 second window
-            sWindowsamples = np.round(.05*globalV.fs,0)
 
-            #Stores ECG values for R to R+.1sec
-            ecgTemporal = globalV.cleanECGFilteredLP[ int(globalV.r_Loc[iloc]) : int( globalV.r_Loc[iloc] + sWindowsamples) ]
-            #print ecgTemporal
-            #Stores de position of the S peaks
-            sPeak = min(ecgTemporal)
-            s_loc = np.argmin(ecgTemporal)
-            #print sPeak, s_loc
-            globalV.s_peak.append(sPeak)
-            globalV.s_Loc.append(int(globalV.r_Loc[iloc] + s_loc))
+    def interpolation(self, signal,freq, derivative=0 ):
+        x = np.arange(0,len(signal))
+        signal = ip.CubicSpline(x,signal)
+        if derivative <1:
+            signal = signal(x)
+        else:
+            signal = signal(x,derivative)
 
-
-    def ecgQLocation(self):
-        for iloc in range(len(globalV.r_Loc)):
-            #.1 second window
-            sWindowsamples = np.round(.05*globalV.fs,0)
-
-            #Stores ECG values for R-.1sec to R
-            ecgTemporal = globalV.cleanECGFilteredLP[ int(globalV.r_Loc[iloc]-sWindowsamples) : int( globalV.r_Loc[iloc] ) ]
-            #print ecgTemporal
-            #Stores de position of the S peaks
-            qPeak = min(ecgTemporal)
-            q_loc = np.argmin(ecgTemporal)
-            #print  q_loc, qPeak
-            globalV.q_peak.append(qPeak)
-            globalV.q_Loc.append(int(globalV.r_Loc[iloc]- q_loc))        
-
-    def RsaEDR(self, time):
-        sampleNumber = globalV.fs*time
-        globalV.rsaEDR = np.zeros(sampleNumber)
-        rPeakLoc = globalV.r_Loc
-        for i in range(len(rPeakLoc)):
-            globalV.rsaEDR[int(rPeakLoc[i])] = globalV.r_peak[i]
-    
-        b,a = sp.butter(4, [.4/globalV.fs],'lowpass')
-        globalV.rsaEDR = sp.filtfilt(b,a,globalV.rsaEDR)
+        
         gP = generalProcessing()
-        globalV.rsaEDR = gP.Normalize(globalV.rsaEDR)
+        nyquist = freq * 0.5
+        f1 = 4
+        b= sp.firwin(5, f1, nyq=nyquist)
+        signal= sp.filtfilt(b,1,signal)
+        samples = int(len(signal)*(100./freq))
+        signal = sp.resample(signal,samples)
+        signal = gP.Normalize(signal)
 
+        return signal
+        
     def RS_AmplitudeEDR(self):
-
+        r_loc = globalV.r_Loc
+        #r_loc500 = []
         rPeakValues = globalV.r_peak
         sPeakValues = globalV.s_peak
+        rsValue = []
+
+        # for x in r_loc:
+        #     r_loc500.append(x*(500/125))
+        # #print r_loc500
+        
+        hRV= np.zeros(len(globalV.cleanECGFilteredLP))
 
         for peakVal in range (len(rPeakValues)):
             ampR = rPeakValues[peakVal]
-            ampS = sPeakValues[peakVal]
+            ampS = sPeakValues[peakVal]           
+            #rsValue.append(ampR-ampS)
+            rsValue.append(abs(ampR) - abs(ampS))
+        
+        #print len(r_loc500), len(hRV), len(rsValue)
+        k = 0
+        for  i in range(len(r_loc)): 
+            qrsloc = int(r_loc[i])
+            #print   i, qrsloc, k
+            hRV[qrsloc]= rsValue[k]
+            k = k+1
+           
 
-            ampRS = ampR - ampS
-            globalV.edrRS.append(ampRS)
-
-        gP = generalProcessing()
-        globalV.edrRS = gP.Normalize(globalV.edrRS)
-        # plt.figure()
-        # plt.plot(globalV.edrRS)
-        # plt.show()
-
-        nyq = globalV.fs * 0.5
-        f1 =[10/nyq]
-        b,a= sp.butter(2, f1)
-        globalV.edrRS= sp.filtfilt(b,a,globalV.edrRS)
-        globalV.edrRS = gP.Normalize(globalV.edrRS)
-
+        globalV.edrRS = hRV
+        nyquist = globalV.fs * 0.5
+        f1 = .8
+        b= sp.firwin(150, f1, nyq= nyquist)
+        globalV.edrRS= sp.filtfilt(b,1,globalV.edrRS)
+        globalV.edrRS = self.interpolation(globalV.edrRS[65:len(globalV.edrRS)-65],globalV.fs)
+        #globalV.edrRS = globalV.edrRS[50:(len(globalV.edrRS)-50)]    
     def QRSareaEDR(self):
-        qrsL = []
-        qrsR = []
+        r_loc = globalV.r_Loc
 
+        qPeakValues = globalV.q_peak
+        rPeakValues = globalV.r_peak
+        sPeakValues = globalV.s_peak
+        areaQRS = []
+        hRV= np.zeros(len(globalV.cleanECGFilteredLP))
+    
         for i in range(len(globalV.r_Loc)):
-            qrsL.append(globalV.r_Loc[i]-(int(.1*globalV.fs)))
-            qrsR.append(globalV.r_Loc[i]+(int(.1*globalV.fs)))
-
-            qrsSignal = globalV.cleanECGFilteredLP[int(qrsL[i]):int(qrsR[i])]
-            #print qrsSignal
-            qrsArea = np.sum(qrsSignal)
-
-            # plt.figure()
-            # plt.plot(qrsSignal)
-            # plt.show()
-            # #print qrsArea
-            globalV.areaEDR.append(qrsArea)
+            qrsArea = qPeakValues[i] + rPeakValues[i] + sPeakValues[i]
+            areaQRS.append(qrsArea)
+        k = 0
+        for  i in range(len(r_loc)): 
+            qrsloc = int(r_loc[i])
+            hRV[qrsloc]= areaQRS[k]
+            k = k+1
         
-        nyq = globalV.fs * 0.5
-        f1 =[20/nyq]
-        b,a= sp.butter(2, f1)
-        globalV.areaEDR= sp.filtfilt(b,a,globalV.areaEDR)    
+        globalV.areaEDR = hRV
+        nyquist = globalV.fs * 0.5
+        f1 = .8
+        b= sp.firwin(200, f1, nyq =nyquist)
+        globalV.areaEDR= sp.filtfilt(b,1,globalV.areaEDR)
+        globalV.areaEDR = self.interpolation(globalV.areaEDR[65:len(globalV.areaEDR)-65],globalV.fs)
+    def RsaEDR(self):
+            nyquist = globalV.fs * .5    
+            ecgSignal = globalV.cleanECGFilteredLP  
+            f1 = [.2, .8]
+            b= sp.firwin(500, f1, pass_zero=False, nyq=nyquist)
+            globalV.rsaEDR= sp.filtfilt(b,1,ecgSignal)
+            
+            globalV.rsaEDR = self.interpolation(globalV.rsaEDR, globalV.fs,1)
         
-        gP = generalProcessing()
-        globalV.areaEDR = gP.Normalize(globalV.areaEDR)
-
-
-    def EdrCalcResps(self, ECGSignal,deltaS,fs):
+    def EdrCalcResps(self, ECGSignal,fs):
             globalV.fs = fs
             ecgP =  ECGProcessing()
             ecgP.cleanECG(ECGSignal,fs)
             ecgP.peakLocation()
-            self.ecgQLocation()
-           # print globalV.q_Loc
-            self.ecgSLocation()
-            #print globalV.s_Loc
+            
             self.RS_AmplitudeEDR()
-            self.RsaEDR(deltaS)
+            self.RsaEDR()
             self.QRSareaEDR()
-
-            for x in range(len(globalV.r_Loc)):
-                print "Q: ",globalV.q_Loc[x], globalV.q_peak[x],'R: ',globalV.r_Loc[x],globalV.r_peak[x], 'S: ', globalV.s_Loc[x], globalV.s_peak[x]
+      
+        
